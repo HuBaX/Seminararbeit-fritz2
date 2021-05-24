@@ -55,6 +55,7 @@ kotlin {
             dependencies {
                 implementation("dev.fritz2:core:$fritz2Version")
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$serializationVersion")
+                implementation("dev.fritz2:components:0.10")
             }
         }
         val commonTest by getting {
