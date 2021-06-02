@@ -1,13 +1,61 @@
 package components
 
+import app.model.ChatMessage
+import app.model.MessageType
+import dev.fritz2.binding.RootStore
+import dev.fritz2.binding.watch
 import dev.fritz2.components.*
 import dev.fritz2.dom.html.RenderContext
+import dev.fritz2.dom.values
+import dev.fritz2.remote.body
+import dev.fritz2.remote.websocket
 import dev.fritz2.styling.p
 import dev.fritz2.styling.params.BasicParams
-import dev.fritz2.styling.params.BoxParams
 import dev.fritz2.styling.params.FlexParams
 import dev.fritz2.styling.params.Style
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.onEach
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+object TextAreaInput : RootStore<String>("") {
+    val getMessage = {ChatMessage(this.current, true, UsernameStore.current)}
+}
+
+object ChatMessagesStore : RootStore<List<ChatMessage>>(emptyList()) {
+    val addOwnMessage = handle { list ->
+        TextAreaInput.update("")
+        val message = TextAreaInput.getMessage()
+        if (message.text.isNotEmpty()) {
+            session.send(Json.encodeToString(message))
+            list.plus(message)
+        } else {
+            list
+        }
+    }
+
+    val addTheirMessage = handle { list, message: ChatMessage ->
+        list.plus(message.copy(ownMessage = false))
+    }
+
+    private val session = websocket("ws://localhost:8080").connect().also {
+        it.messages.body.onEach {
+            addTheirMessage(Json.decodeFromString(it))
+        }.watch()
+    }
+    val join = handle { list ->
+        session.send(Json.encodeToString(ChatMessage("", true, UsernameStore.current, MessageType.JOINING)))
+        list
+    }
+
+    val leave = handle {list ->
+        session.send(Json.encodeToString(ChatMessage("", true, UsernameStore.current, MessageType.LEAVING)))
+        session.close()
+        list
+    }
+
+}
 
 @ExperimentalCoroutinesApi
 fun RenderContext.chat() {
@@ -44,7 +92,7 @@ fun RenderContext.chat() {
     val messageParagraph: Style<BasicParams> = {
         radius { "1.15rem" }
         lineHeight { "1.25" }
-        maxWidth { "75%" }
+        width { "100%" }
         padding { "0.5rem .875rem" }
         css("overflow-wrap: break-word;")
         after {
@@ -67,7 +115,7 @@ fun RenderContext.chat() {
         }
     }
 
-    val theirParagraph: Style<BoxParams> = {
+    val theirParagraph: Style<FlexParams> = {
         messageParagraph()
         alignItems { flexStart }
         background { color { "#e5e5ea" } }
@@ -95,45 +143,23 @@ fun RenderContext.chat() {
         height { auto }
     }
 
-
     flexBox(flexBoxConfig) {
         stackUp(chatWindow) {
             items {
-                box(myMessage)
-                {
-                    p(myParagraph) { +"Some MessageAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa bbbbbbbbbbbbbbb bbbbb  bdwev ewrewr" }
-                }
-                box(myMessage)
-                {
-                    p(myParagraph) { +"Some MessageAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa bbbbbbbbbbbbbbb bbbbb  bdwev ewrewr" }
-                }
-                box(myMessage)
-                {
-                    p(myParagraph) { +"Some MessageAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa bbbbbbbbbbbbbbb bbbbb  bdwev ewrewr" }
-                }
-                box(myMessage)
-                {
-                    p(myParagraph) { +"Some MessageAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa bbbbbbbbbbbbbbb bbbbb  bdwev ewrewr" }
-                }
-                box(myMessage)
-                {
-                    p(myParagraph) { +"Some MessageAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa bbbbbbbbbbbbbbb bbbbb  bdwev ewrewr" }
-                }
-                box(myMessage)
-                {
-                    p(myParagraph) { +"Some MessageAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa bbbbbbbbbbbbbbb bbbbb  bdwev ewrewr" }
-                }
-                box(myMessage)
-                {
-                    p(myParagraph) { +"Some MessageAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa bbbbbbbbbbbbbbb bbbbb  bdwev ewrewr" }
-                }
-                box(myMessage)
-                {
-                    p(myParagraph) { +"Some MessageAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAa bbbbbbbbbbbbbbb bbbbb  bdwev ewrewr" }
-                }
-                box(theirMessage)
-                {
-                    p(theirParagraph) { +"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBBBBBBBBBBBBBBBBBBBBBBCCCCCCCCCCCCCCCcAAAAAAAAAAAAAA" }
+                ChatMessagesStore.data.renderEach { message ->
+                    if (message.ownMessage) {
+                        box(myMessage) {
+                            p(myParagraph) {
+                                + message.text
+                            }
+                        }
+                    } else {
+                        box(theirMessage) {
+                            p(theirParagraph) {
+                                + message.text
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -141,8 +167,12 @@ fun RenderContext.chat() {
             textArea(textInput) {
                 placeholder("Enter your message...")
                 resizeBehavior { none }
+                value(TextAreaInput.data)
+                events {changes.values() handledBy TextAreaInput.update}
             }
-            clickButton(buttonInput) { text("Send") }
+            clickButton(buttonInput) {
+                text("Send")
+            } handledBy ChatMessagesStore.addOwnMessage
         }
     }
 }

@@ -1,13 +1,11 @@
 package app.backend
 
-import app.database.ToDoDB
-import app.database.ToDosTable
-import app.database.database
-import app.model.ToDo
-import app.model.ToDoValidator
+import app.database.*
+import app.model.*
 import io.ktor.application.*
 import io.ktor.features.*
 import io.ktor.http.*
+import io.ktor.http.cio.websocket.*
 import io.ktor.http.content.*
 import io.ktor.request.*
 import io.ktor.response.*
@@ -15,12 +13,19 @@ import io.ktor.routing.*
 import io.ktor.serialization.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
+import io.ktor.websocket.*
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import java.io.File
+import java.util.*
 
-val validator = ToDoValidator()
+val userValidator = UserValidator
 
+
+class ChatClient(val username: String, val session: DefaultWebSocketSession)
+val clients: MutableList<ChatClient> = Collections.synchronizedList(mutableListOf())
 fun Application.main() {
     val currentDir = File(".").absoluteFile
     environment.log.info("Current directory: $currentDir")
@@ -29,11 +34,14 @@ fun Application.main() {
         json()
     }
 
+    install(WebSockets)
+
     Database.connect("jdbc:h2:mem:regular;DB_CLOSE_DELAY=-1;", "org.h2.Driver")
 
     database {
-        SchemaUtils.create(ToDosTable)
+        SchemaUtils.create(UsersTable)
     }
+
 
     routing {
         get("/") {
@@ -45,45 +53,50 @@ fun Application.main() {
         static("/") {
             resources("/")
         }
-
-        route("/api") {
-
-            get("/todos") {
-                environment.log.info("getting all ToDos")
-                call.respond(ToDoDB.all())
-            }
-
-            post("/todos") {
-                val toDo = call.receive<ToDo>()
-                if (validator.isValid(toDo, Unit)) {
-                    environment.log.info("save new ToDo: $toDo")
-                    call.respond(HttpStatusCode.Created, ToDoDB.add(toDo))
-                } else {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "data is not valid"))
+        route("/auth") {
+            post("/register") {
+                val user = call.receive<User>()
+                if (userValidator.isValid(user, UserCreationPhase.Registration)) {
+                    call.respond(HttpStatusCode.Created, UserDB.add(user))
                 }
             }
-
-            put("/todos/{id}") {
-                val oldToDo = call.parameters["id"]?.toLongOrNull()?.let { ToDoDB.find(it) }
-                val newToDo = call.receive<ToDo>()
-                if (oldToDo == null) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid id"))
-                } else if (!validator.isValid(newToDo, Unit)) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "data is not valid"))
+            post("/login") {
+                val user = call.receive<User>()
+                val foundUser = UserDB.find(user.username)
+                if (foundUser != null) {
+                    call.respond(foundUser.toUser())
                 } else {
-                    environment.log.info("update ToDo[id=${oldToDo.id.value}] to: $newToDo")
-                    call.respond(HttpStatusCode.Created, ToDoDB.update(oldToDo, newToDo.copy(id = oldToDo.id.value)))
+                    call.respond(HttpStatusCode.NotFound, mapOf("error" to "user not found"))
                 }
+
             }
+        }
 
-            delete("/todos/{id}") {
-                val oldToDo = call.parameters["id"]?.toLongOrNull()?.let { ToDoDB.find(it) }
-                if (oldToDo == null) {
-                    call.respond(HttpStatusCode.BadRequest, mapOf("error" to "invalid id"))
-                } else {
-                    environment.log.info("remove ToDo with id: ${oldToDo.id.value}")
-                    call.respond(HttpStatusCode.OK, ToDoDB.remove(oldToDo))
+        webSocket {
+            val session = this
+            try {
+                for (frame in incoming) {
+                    when (frame) {
+                        is Frame.Text-> {
+                            val json = frame.readText()
+                            val msg = Json.decodeFromString<ChatMessage>(json)
+                            when(msg.type) {
+                                MessageType.JOINING -> {
+                                    clients.add(ChatClient(msg.username, session))
+                                }
+                                MessageType.MESSAGE -> {
+                                    clients.filter { it.username != msg.username }.forEach {it.session.send(Frame.Text(json))}
+                                }
+                                MessageType.LEAVING -> {
+                                    clients.find { it.session == session }.let { client -> clients.remove(client) }
+                                }
+                            }
+                        }
+                        else -> call.respond(HttpStatusCode.BadRequest, "Content didn't match")
+                    }
                 }
+            } catch (e: Exception) {
+                println(e.localizedMessage)
             }
         }
     }

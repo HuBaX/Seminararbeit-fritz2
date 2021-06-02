@@ -1,5 +1,7 @@
 package components
 
+import app.model.Chat
+import dev.fritz2.binding.RootStore
 import dev.fritz2.components.box
 import dev.fritz2.components.clickButton
 import dev.fritz2.components.modal
@@ -8,6 +10,10 @@ import dev.fritz2.styling.params.BasicParams
 import dev.fritz2.styling.params.FlexParams
 import dev.fritz2.styling.params.Style
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+
+object OpenedChats : RootStore<List<Chat>>(mutableListOf(Chat("1", ""))){
+
+}
 
 @ExperimentalCoroutinesApi
 fun RenderContext.chatSelection() {
@@ -49,67 +55,12 @@ fun RenderContext.chatSelection() {
         overflowY { auto }
         maxWidth { "" }}) { content {addChatDialog()} }
         box(chatList) {
-            box(chatElement) {
-                +"First Chat"
+            OpenedChats.data.renderEach { chat ->
+                box(chatElement) {
+                    +"${chat.username}"
+                }
             }
-            box(chatElement) {
-                +"Second Chat"
-            }
-            box(chatElement) {
-                +"First Chat"
-            }
-            box(chatElement) {
-                +"Second Chat"
-            }
-            box(chatElement) {
-                +"First Chat"
-            }
-            box(chatElement) {
-                +"Second Chat"
-            }
-            box(chatElement) {
-                +"First Chat"
-            }
-            box(chatElement) {
-                +"Second Chat"
-            }
-            box(chatElement) {
-                +"First Chat"
-            }
-            box(chatElement) {
-                +"Second Chat"
-            }
-            box(chatElement) {
-                +"First Chat"
-            }
-            box(chatElement) {
-                +"Second Chat"
-            }
-            box(chatElement) {
-                +"First Chat"
-            }
-            box(chatElement) {
-                +"Second Chat"
-            }
-            box(chatElement) {
-                +"First Chat"
-            }
-            box(chatElement) {
-                +"Second Chat"
-            }
-            box(chatElement) {
-                +"First Chat"
-            }
-            box(chatElement) {
-                +"Second Chat"
-            }
-            box(chatElement) {
-                +"First Chat"
-            }
-            box(chatElement) {
-                +"Second Chat"
-            }
-        } //TODO: List items support onClick
+        }
     }
 }
 

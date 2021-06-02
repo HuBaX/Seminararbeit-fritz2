@@ -68,6 +68,7 @@ kotlin {
             dependencies {
                 implementation("io.ktor:ktor-server-netty:$ktorVersion")
                 implementation("io.ktor:ktor-serialization:$ktorVersion")
+                implementation("io.ktor:ktor-websockets:$ktorVersion")
                 implementation("ch.qos.logback:logback-classic:$logbackVersion")
 
                 implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
