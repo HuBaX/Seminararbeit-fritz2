@@ -21,7 +21,6 @@ object UsernameStore : RootStore<String>("")
 
 @ExperimentalCoroutinesApi
 fun RenderContext.actionContent() {
-
     div {
         LoggedInStore.data.render { isLoggedIn ->
             if (isLoggedIn) {

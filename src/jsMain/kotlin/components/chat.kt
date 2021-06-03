@@ -39,12 +39,17 @@ object ChatMessagesStore : RootStore<List<ChatMessage>>(emptyList()) {
         list.plus(message.copy(ownMessage = false))
     }
 
-    private val session = websocket("ws://localhost:8080").connect().also {
+    private var session = websocket("ws://localhost:8080").connect().also {
         it.messages.body.onEach {
             addTheirMessage(Json.decodeFromString(it))
         }.watch()
     }
     val join = handle { list ->
+        session = websocket("ws://localhost:8080").connect().also {
+            it.messages.body.onEach {
+                addTheirMessage(Json.decodeFromString(it))
+            }.watch()
+        }
         session.send(Json.encodeToString(ChatMessage("", true, UsernameStore.current, MessageType.JOINING)))
         list
     }
